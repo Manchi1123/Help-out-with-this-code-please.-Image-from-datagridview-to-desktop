@@ -1,0 +1,212 @@
+# Help-out-with-this-code-please.-Image-from-datagridview-to-desktop
+I am displaying images into datagridview, is working fine without any problem, but when I want to download a single image it keeps on showing me problems that I have to (Select a single cell from Attachment column). Please the code is detailed. one can try it and help out with a solution. thank you.
+
+
+using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.IO;
+using System.Windows.Forms;
+
+namespace ImageThumbnailDataGridView
+{
+    public partial class FormMain : Form
+    {
+        private List<string> files = null;
+        private int numberPreviewImages = 100;
+        private int imageSize = 90;
+        private int currentStartImageIndex = 0;
+        private int currentEndImageIndex = 0;
+
+        //Dictionary will store the attachments
+        Dictionary<int, byte[]> myAttachments;
+
+        public FormMain()
+        {
+            InitializeComponent();
+        }
+
+        private void btnLoadImages_Click(object sender, EventArgs e)
+        {
+            if (openFileDialog.ShowDialog(this) != DialogResult.OK)
+            {
+                return;
+            }
+
+            files = new List<string>();
+            files.AddRange(openFileDialog.FileNames);
+            files.Sort();
+
+            if (numberPreviewImages == 1)
+            {
+                currentStartImageIndex = 0;
+                currentEndImageIndex = 1;
+            }
+            else
+            {
+                currentEndImageIndex = currentStartImageIndex + numberPreviewImages - 1;
+            }
+
+            this.LoadImages();
+        }
+
+        private void LoadImages()
+        {
+            try
+            {
+                if (files == null)
+                {
+                    return;
+                }
+
+                if (this.WindowState == FormWindowState.Minimized)
+                {
+                    return;
+                }
+
+                dataViewImages.Rows.Clear();
+                dataViewImages.Columns.Clear();
+
+                int numColumnsForWidth = (dataViewImages.Width - 10) / (imageSize + 20);
+                int numRows = 0;
+
+                int numImagesRequired = 0;
+
+                if (currentEndImageIndex > files.Count)
+                {
+                    // Are we requesting to display more images than we actually have? If so then reduce
+                    if (currentStartImageIndex == 0)
+                    {
+                        numImagesRequired = files.Count;
+                    }
+                    else
+                    {
+                        numImagesRequired = (currentEndImageIndex - currentStartImageIndex) - (currentEndImageIndex - _files.Count);
+                    }
+                }
+                else
+                {
+                    // Calculated the number of rows we will need for normal use
+                    numImagesRequired = currentEndImageIndex - currentStartImageIndex; 
+                }
+
+                numRows = numImagesRequired / numColumnsForWidth;
+
+                if (numImagesRequired % numColumnsForWidth > 0)
+                {
+                    numRows += 1;
+                }
+
+                if (numImagesRequired < numColumnsForWidth)
+                {
+                    numColumnsForWidth = numImagesRequired;
+                }
+
+                int numGeneratedCells = numRows * numColumnsForWidth;
+
+                // Dynamically creating the columns
+                for (int index = 0; index < numColumnsForWidth; index++)
+                {
+                    DataGridViewImageColumn dataGridViewColumn = new DataGridViewImageColumn();
+
+                    dataViewImages.Columns.Add(dataGridViewColumn);
+                    dataViewImages.Columns[index].Width = imageSize + 20;
+                }
+
+                // Creating the rows
+                for (int index = 0; index < numRows; index++)
+                {
+                    dataViewImages.Rows.Add();
+                    dataViewImages.Rows[index].Height = imageSize + 20;
+                }
+
+                int columnIndex = 0;
+                int rowIndex = 0;
+
+                for (int index = currentStartImageIndex; index < currentStartImageIndex + numImagesRequired; index++)
+                {
+                    // Load the image from the file and add to the DataGridView
+                    Image image = Helper.ResizeImage(files[index], imageSize, imageSize, false);
+                    dataViewImages.Rows[rowIndex].Cells[columnIndex].Value = image;
+                    dataViewImages.Rows[rowIndex].Cells[columnIndex].ToolTipText = Path.GetFileName(files[index]);
+
+                    // Have we reached the end column? if so then start on the next row
+                    if (columnIndex == numColumnsForWidth - 1)
+                    {
+                        rowIndex++;
+                        columnIndex = 0;
+                    }
+                    else
+                    {
+                        columnIndex++;
+                    }
+                }
+
+                // Blank the unused cells
+                if (numGeneratedCells > numImagesRequired)
+                {
+                    for (int index = 0; index < numGeneratedCells - numImagesRequired; index++)
+                    {
+                        DataGridViewCellStyle dataGridViewCellStyle = new DataGridViewCellStyle();
+                        dataGridViewCellStyle.NullValue = null;
+                        dataGridViewCellStyle.Tag = "BLANK";
+                        dataViewImages.Rows[rowIndex].Cells[columnIndex + index].Style = dataGridViewCellStyle;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message);
+            }
+        }
+
+        private void dataViewImages_Resize(object sender, EventArgs e)
+        {
+            this.LoadImages();
+        }
+
+        private void FormMain_Load(object sender, EventArgs e)
+        {
+            imageSize = 90;
+        }
+
+        private void button1_Click(object sender, EventArgs e)
+        {
+            if (dataViewImages.SelectedRows.Count == 1 && dataViewImages.SelectedCells[0].ColumnIndex == 1 && dataViewImages.SelectedCells[0].Value != null)
+            {
+                DownloadAttachment(dataViewImages.SelectedCells[0]);
+            }
+            else
+                MessageBox.Show("Select a single cell from Attachment column", "Error uploading file", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+        private void DownloadAttachment(DataGridViewCell dgvCell)
+        {
+            string fileName = Convert.ToString(dgvCell.Value);
+
+            //Return if the cell is empty
+            if (fileName == string.Empty)
+                return;
+
+            FileInfo fileInfo = new FileInfo(fileName);
+            string fileExtension = fileInfo.Extension;
+
+            byte[] byteData = null;
+
+            //show save as dialog
+            using (SaveFileDialog saveFileDialog1 = new SaveFileDialog())
+            {
+                //Set Save dialog properties
+                saveFileDialog1.Filter = "Files (*" + fileExtension + ")|*" + fileExtension;
+                saveFileDialog1.Title = "Save File as";
+                saveFileDialog1.CheckPathExists = true;
+                saveFileDialog1.FileName = fileName;
+
+                if (saveFileDialog1.ShowDialog() == DialogResult.OK)
+                {
+                    byteData = myAttachments[dgvCell.RowIndex];
+                    File.WriteAllBytes(saveFileDialog1.FileName, byteData);
+                }
+            }
+        }
+    }
+}
